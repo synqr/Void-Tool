@@ -1,0 +1,136 @@
+import sys
+if hasattr(sys.stdout, 'reconfigure'): sys.stdout.reconfigure(encoding='utf-8')
+import os, time, asyncio, aiohttp
+
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from rich.align import Align
+from rich.live import Live
+from rich.table import Table
+from rich.layout import Layout
+from rich import box
+
+console = Console()
+
+BANNER = r"""
+ ██╗   ██╗ ██████╗ ██╗██████╗       ██╗  ██╗██╗   ██╗███╗   ██╗████████╗███████╗██████╗
+ ██║   ██║██╔═══██╗██║██╔══██╗      ██║  ██║██║   ██║████╗  ██║╚══██╔══╝██╔════╝██╔══██╗
+ ██║   ██║██║   ██║██║██║  ██║      ███████║██║   ██║██╔██╗ ██║   ██║   █████╗  ██████╔╝
+ ╚██╗ ██╔╝██║   ██║██║██║  ██║      ██╔══██║██║   ██║██║╚██╗██║   ██║   ██╔══╝  ██╔══██╗
+  ╚████╔╝ ╚██████╔╝██║██████╔╝      ██║  ██║╚██████╔╝██║ ╚████║   ██║   ███████╗██║  ██║
+   ╚═══╝   ╚═════╝ ╚═╝╚═════╝       ╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝   ╚═╝   ╚══════╝╚═╝  ╚═╝
+""".strip("\n")
+
+SITES = [
+    ("GitHub", "https://github.com/{}", "GitHub"),
+    ("Twitter", "https://twitter.com/{}", "Twitter/X"),
+    ("Instagram", "https://instagram.com/{}", "Instagram"),
+    ("TikTok", "https://tiktok.com/@{}", "TikTok"),
+    ("Reddit", "https://reddit.com/u/{}", "Reddit"),
+    ("Twitch", "https://twitch.tv/{}", "Twitch"),
+    ("YouTube", "https://youtube.com/@{}", "YouTube"),
+    ("Steam", "https://steamcommunity.com/id/{}", "Steam"),
+    ("Pinterest", "https://pinterest.com/{}", "Pinterest"),
+    ("Telegram", "https://t.me/{}", "Telegram"),
+    ("DailyMotion", "https://www.dailymotion.com/{}", "DailyMotion"),
+    ("SoundCloud", "https://soundcloud.com/{}", "SoundCloud"),
+    ("Roblox", "https://www.roblox.com/user.aspx?username={}", "Roblox"),
+]
+
+
+def boot():
+    if sys.platform.startswith("win"):
+        os.system("title VOID USERNAME HUNTER // OSINT CORE")
+    os.system("cls" if os.name == "nt" else "clear")
+
+
+async def check_site(session, url, name):
+    try:
+        async with session.get(url, timeout=5) as r:
+            return name, r.status == 200
+    except Exception:
+        return name, False
+
+
+async def run_hunt(user, update_fn):
+    async with aiohttp.ClientSession(headers={"User-Agent": "Mozilla/5.0"}) as session:
+        tasks = [check_site(session, url_tmpl.format(user), name) for name, url_tmpl, _ in SITES]
+        results = []
+        for i, task in enumerate(asyncio.as_completed(tasks)):
+            res = await task
+            results.append(res)
+            update_fn(res, i + 1, len(SITES))
+        return results
+
+
+def main():
+    boot()
+    head = Text()
+    for line in BANNER.splitlines():
+        head.append(line + "\n", style="bold red")
+    head.append("USERNAME HUNTER V2 · 13 platforms", style="dim")
+    console.print(Align.center(Panel(head, border_style="red", padding=(0, 1))))
+    console.print()
+
+    user = console.input(" [bold red]└─▶[/] [white]Username to hunt >> ").strip()
+    if not user:
+        return
+
+    layout = Layout()
+    layout.split_column(Layout(name="header", size=4), Layout(name="body", ratio=1), Layout(name="footer", size=3))
+
+    results = []
+    current_status = "Initializing..."
+    progress = 0
+
+    def update(res, count, total):
+        nonlocal current_status, progress
+        results.append(res)
+        current_status = f"Scanning {res[0]}..."
+        progress = int((count / total) * 100)
+
+    import threading
+    threading.Thread(target=lambda: asyncio.run(run_hunt(user, update)), daemon=True).start()
+
+    with Live(layout, screen=True, refresh_per_second=10):
+        while len(results) < len(SITES):
+            layout["header"].update(Panel(
+                Align.center(Text.from_markup(f"[bold red]HUNTING : [white]{user}[/] [dim]||[/] [red]{progress}%")),
+                border_style="red",
+            ))
+            table = Table(box=box.SIMPLE, expand=True, header_style="bold red")
+            table.add_column("PLATFORM", ratio=1)
+            table.add_column("STATUS", ratio=1, justify="center")
+            for name, found in sorted(results):
+                status = "[bold green][✓] FOUND[/]" if found else "[dim red][x] MISSING[/]"
+                table.add_row(name.upper(), status)
+            layout["body"].update(Panel(table, title="[bold white]LIVE SCAN", border_style="red"))
+            layout["footer"].update(Panel(
+                Align.center(Text.from_markup(f"[dim]VOID OSINT ENGINE - SCANNING {current_status}[/]")),
+                border_style="red",
+            ))
+            time.sleep(0.1)
+
+    os.system("cls")
+    console.print(Align.center(Panel(
+        Text.from_markup(f"[bold green]REPORT COMPLETED FOR : {user}"),
+        border_style="green", padding=(1, 5),
+    )))
+
+    final_table = Table(box=box.ROUNDED, border_style="red", expand=True)
+    final_table.add_column("Platform", style="white")
+    final_table.add_column("Result", justify="center")
+    final_table.add_column("Direct Link", style="blue underline")
+    for name, found in sorted(results):
+        if found:
+            url = [s[1] for s in SITES if s[0] == name][0].format(user)
+            final_table.add_row(name, "[bold green]OPERATIONAL[/]", url)
+    console.print(final_table)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit()
